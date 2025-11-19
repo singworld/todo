@@ -21,8 +21,8 @@ const { theme } = useTheme()
 
 // 表单数据
 const formData = ref<TimeBlockFormData>({
-  startTime: '09:00',
-  endTime: '10:00',
+  startTime: '10:00',  // 默认工作开始时间
+  endTime: '11:00',    // 默认1小时时间段
   activityType: 'work',
   description: '',
   recurrence: 'none',
@@ -52,8 +52,8 @@ watch(() => props.editingBlock, (block) => {
 // 重置表单
 function resetForm() {
   formData.value = {
-    startTime: '09:00',
-    endTime: '10:00',
+    startTime: '10:00',  // 默认工作开始时间
+    endTime: '11:00',    // 默认1小时时间段
     activityType: 'work',
     description: '',
     recurrence: 'none',

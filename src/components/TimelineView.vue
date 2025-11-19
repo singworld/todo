@@ -11,8 +11,13 @@ const emit = defineEmits<{
   edit: [timeBlock: TimeBlock]
 }>()
 
-// 时间轴小时数组 (0-23)
-const hours = Array.from({ length: 24 }, (_, i) => i)
+// 工作时间范围配置
+const START_HOUR = 10  // 开始小时 (10:00)
+const END_HOUR = 18    // 结束小时 (18:00)
+const WORK_HOURS = END_HOUR - START_HOUR  // 工作小时数 (8小时)
+
+// 时间轴小时数组 (10-18)
+const hours = Array.from({ length: WORK_HOURS + 1 }, (_, i) => START_HOUR + i)
 
 // 当前时间 (用于高亮当前时间线)
 const currentTime = ref(new Date())
@@ -20,18 +25,27 @@ setInterval(() => {
   currentTime.value = new Date()
 }, 60000) // 每分钟更新一次
 
-// 当前时间的位置百分比 (0-100)
+// 当前时间的位置百分比 (0-100, 相对于工作时间段)
 const currentTimePosition = computed(() => {
   const now = currentTime.value
   const hours = now.getHours()
   const minutes = now.getMinutes()
-  return ((hours * 60 + minutes) / 1440) * 100
+  const currentMinutes = hours * 60 + minutes
+  const startMinutes = START_HOUR * 60
+  const workMinutes = WORK_HOURS * 60
+
+  // 如果当前时间不在工作时间范围内,不显示
+  if (hours < START_HOUR || hours >= END_HOUR) {
+    return -1
+  }
+
+  return ((currentMinutes - startMinutes) / workMinutes) * 100
 })
 
-// 是否显示当前时间线 (仅当查看今天时)
+// 是否显示当前时间线 (仅当查看今天且在工作时间内)
 const showCurrentTimeLine = computed(() => {
   const today = new Date().toISOString().split('T')[0]
-  return scheduleStore.currentDate === today
+  return scheduleStore.currentDate === today && currentTimePosition.value >= 0
 })
 
 // 将时间字符串转换为分钟数 (00:00 = 0, 23:59 = 1439)
@@ -40,14 +54,18 @@ function timeToMinutes(time: string): number {
   return hours * 60 + minutes
 }
 
-// 计算时间段的位置和高度
+// 计算时间段的位置和高度 (相对于工作时间段)
 function getTimeBlockStyle(block: TimeBlock) {
   const start = timeToMinutes(block.startTime)
   const end = timeToMinutes(block.endTime)
   const duration = end - start
 
-  const top = (start / 1440) * 100
-  const height = (duration / 1440) * 100
+  const startMinutes = START_HOUR * 60
+  const workMinutes = WORK_HOURS * 60
+
+  // 相对于工作时间段的位置
+  const top = ((start - startMinutes) / workMinutes) * 100
+  const height = (duration / workMinutes) * 100
 
   return {
     top: `${top}%`,
@@ -83,15 +101,15 @@ function handleEdit(block: TimeBlock) {
 
 <template>
   <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden">
-    <!-- 时间轴容器 -->
-    <div class="relative" style="height: 1440px;">
+    <!-- 时间轴容器 (8小时 = 480分钟 = 480px 高度) -->
+    <div class="relative" style="height: 640px;">
       <!-- 小时刻度线和标签 -->
       <div class="absolute inset-0">
         <div
-          v-for="hour in hours"
+          v-for="(hour, index) in hours"
           :key="hour"
           class="absolute w-full border-t border-gray-200 dark:border-gray-700"
-          :style="{ top: `${(hour / 24) * 100}%` }"
+          :style="{ top: `${(index / WORK_HOURS) * 100}%` }"
         >
           <span class="absolute -top-3 left-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 px-1">
             {{ hour.toString().padStart(2, '0') }}:00
