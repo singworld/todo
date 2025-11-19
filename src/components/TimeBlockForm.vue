@@ -10,6 +10,7 @@ import { useTheme } from '@/composables/useTheme'
 const props = defineProps<{
   isOpen: boolean
   editingBlock?: TimeBlock | null
+  editMode?: 'single' | 'all'  // 编辑模式
 }>()
 
 const emit = defineEmits<{
@@ -228,8 +229,8 @@ function handleContentClick(e: MouseEvent) {
               </p>
             </div>
 
-            <!-- 重复规则 -->
-            <div>
+            <!-- 重复规则 (仅编辑所有重复时显示) -->
+            <div v-if="!editingBlock || editMode !== 'single'">
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 重复
               </label>
@@ -245,6 +246,13 @@ function handleContentClick(e: MouseEvent) {
                   {{ meta.label }} - {{ meta.description }}
                 </option>
               </select>
+            </div>
+
+            <!-- 提示信息 (仅编辑单次时显示) -->
+            <div v-if="editingBlock && editMode === 'single'" class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <p class="text-sm text-blue-700 dark:text-blue-300">
+                ℹ️ 仅编辑今天这一次,不影响其他日期的重复时间段
+              </p>
             </div>
 
             <!-- 重复结束日期 (仅当设置了重复时显示) -->

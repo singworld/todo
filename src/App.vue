@@ -14,6 +14,8 @@ const { theme, toggleTheme: toggleThemeComposable } = useTheme()
 // 表单状态
 const isFormOpen = ref(false)
 const editingBlock = ref<TimeBlock | null>(null)
+const editMode = ref<'single' | 'all'>('all')  // 编辑模式: single=仅此日期, all=所有重复
+const editTargetDate = ref<string>('')  // 编辑的目标日期
 
 // 文件上传引用
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -21,12 +23,39 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 // 打开添加表单
 function openAddForm() {
   editingBlock.value = null
+  editMode.value = 'all'
+  editTargetDate.value = ''
   isFormOpen.value = true
 }
 
 // 打开编辑表单
 function openEditForm(block: TimeBlock) {
-  editingBlock.value = block
+  // 如果是重复时间段,询问编辑模式
+  if (block.recurrence !== 'none' || block.sourceBlockId) {
+    const choice = confirm(
+      '这是一个重复的时间段。\n\n' +
+      '点击"确定"仅编辑今天这一次\n' +
+      '点击"取消"编辑所有重复'
+    )
+    editMode.value = choice ? 'single' : 'all'
+
+    // 如果是虚拟实例,获取原始时间段
+    if (block.sourceBlockId) {
+      const sourceBlock = scheduleStore.timeBlocks.find(b => b.id === block.sourceBlockId)
+      if (sourceBlock) {
+        editingBlock.value = sourceBlock
+        editTargetDate.value = block.date
+      }
+    } else {
+      editingBlock.value = block
+      editTargetDate.value = block.date
+    }
+  } else {
+    editingBlock.value = block
+    editMode.value = 'all'
+    editTargetDate.value = ''
+  }
+
   isFormOpen.value = true
 }
 
@@ -39,7 +68,17 @@ function closeForm() {
 // 提交表单
 function handleFormSubmit(formData: TimeBlockFormData) {
   if (editingBlock.value) {
-    scheduleStore.updateTimeBlock(editingBlock.value.id, formData)
+    if (editMode.value === 'single') {
+      // 仅编辑此日期 - 创建独立副本
+      scheduleStore.updateTimeBlockInstance(
+        editingBlock.value.id,
+        editTargetDate.value || scheduleStore.currentDate,
+        formData
+      )
+    } else {
+      // 编辑所有重复
+      scheduleStore.updateTimeBlock(editingBlock.value.id, formData)
+    }
   } else {
     scheduleStore.addTimeBlock(formData)
   }
@@ -193,6 +232,7 @@ function handleClearData() {
     <TimeBlockForm
       :is-open="isFormOpen"
       :editing-block="editingBlock"
+      :edit-mode="editMode"
       @close="closeForm"
       @submit="handleFormSubmit"
     />

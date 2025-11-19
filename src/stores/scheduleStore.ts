@@ -100,6 +100,57 @@ export const useScheduleStore = defineStore('schedule', () => {
     persistToStorage()
   }
 
+  // 仅编辑某一天的重复时间段实例 (创建独立副本)
+  function updateTimeBlockInstance(
+    sourceBlockId: string,
+    targetDate: string,
+    formData: Partial<TimeBlockFormData>
+  ): void {
+    // 查找原始时间段
+    const sourceBlock = timeBlocks.value.find(b => b.id === sourceBlockId)
+
+    if (!sourceBlock) return
+
+    // 检查是否已有该日期的独立副本
+    const existingCopy = timeBlocks.value.find(
+      b => b.sourceBlockId === sourceBlockId && b.date === targetDate
+    )
+
+    const now = new Date().toISOString()
+
+    if (existingCopy) {
+      // 更新已存在的副本
+      const index = timeBlocks.value.findIndex(b => b.id === existingCopy.id)
+      if (index !== -1) {
+        timeBlocks.value[index] = {
+          ...existingCopy,
+          startTime: formData.startTime ?? existingCopy.startTime,
+          endTime: formData.endTime ?? existingCopy.endTime,
+          activityType: formData.activityType ?? existingCopy.activityType,
+          description: formData.description ?? existingCopy.description,
+          updatedAt: now
+        }
+      }
+    } else {
+      // 创建新的独立副本
+      const newBlock: TimeBlock = {
+        id: uuidv4(),
+        date: targetDate,
+        startTime: formData.startTime ?? sourceBlock.startTime,
+        endTime: formData.endTime ?? sourceBlock.endTime,
+        activityType: formData.activityType ?? sourceBlock.activityType,
+        description: formData.description ?? sourceBlock.description,
+        recurrence: 'none',  // 副本不重复
+        sourceBlockId: sourceBlockId,  // 标记来源
+        createdAt: now,
+        updatedAt: now
+      }
+      timeBlocks.value.push(newBlock)
+    }
+
+    persistToStorage()
+  }
+
   // 删除时间段
   function deleteTimeBlock(id: string): void {
     const index = timeBlocks.value.findIndex(b => b.id === id)
@@ -206,6 +257,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     // 方法
     addTimeBlock,
     updateTimeBlock,
+    updateTimeBlockInstance,
     deleteTimeBlock,
     deleteTimeBlockInstance,
     goToToday,
