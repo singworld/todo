@@ -145,11 +145,35 @@ export function getTimeBlocksForDate(
   allTimeBlocks: TimeBlock[],
   targetDate: string
 ): TimeBlock[] {
+  // 1. 找出该日期的所有独立副本(sourceBlockId存在)
+  const independentCopies = allTimeBlocks.filter(
+    block => block.date === targetDate && block.sourceBlockId
+  )
+
+  // 2. 提取被覆盖的原始时间段ID集合
+  const overriddenSourceIds = new Set(
+    independentCopies.map(copy => copy.sourceBlockId).filter(Boolean) as string[]
+  )
+
+  // 3. 过滤并生成时间段列表
   return allTimeBlocks
-    .filter(block => shouldTimeBlockAppear(block, targetDate))
+    .filter(block => {
+      // 3.1 独立副本直接保留(date === targetDate)
+      if (block.date === targetDate && block.sourceBlockId) {
+        return true
+      }
+
+      // 3.2 对于原始时间段,如果已有独立副本则跳过
+      if (!block.sourceBlockId && overriddenSourceIds.has(block.id)) {
+        return false
+      }
+
+      // 3.3 其他按重复规则判断
+      return shouldTimeBlockAppear(block, targetDate)
+    })
     .map(block => {
-      // 如果不是原始日期,创建虚拟时间段(引用原始ID)
-      if (block.date !== targetDate) {
+      // 对于重复时间段在非原始日期,创建虚拟实例
+      if (block.date !== targetDate && !block.sourceBlockId) {
         return {
           ...block,
           date: targetDate,
