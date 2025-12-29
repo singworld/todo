@@ -41,3 +41,7 @@ coverage
 *.tmp
 *.temp
 .cache
+
+# Deploy runtime
+.server.pid
+server.log
