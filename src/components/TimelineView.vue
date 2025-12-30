@@ -4,6 +4,7 @@ import { useScheduleStore } from '@/stores/scheduleStore'
 import { ACTIVITY_TYPE_META } from '@/types/schedule'
 import type { TimeBlock } from '@/types/schedule'
 import { Clock, Edit, Trash2 } from 'lucide-vue-next'
+import { calculateTimeBlockLayouts } from '@/utils/schedule'
 
 const scheduleStore = useScheduleStore()
 
@@ -48,6 +49,11 @@ const showCurrentTimeLine = computed(() => {
   return scheduleStore.currentDate === today && currentTimePosition.value >= 0
 })
 
+// 计算时间段布局 (处理重叠)
+const timeBlockLayouts = computed(() => {
+  return calculateTimeBlockLayouts(scheduleStore.currentDayTimeBlocks)
+})
+
 // 将时间字符串转换为分钟数 (00:00 = 0, 23:59 = 1439)
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number)
@@ -55,7 +61,7 @@ function timeToMinutes(time: string): number {
 }
 
 // 计算时间段的位置和高度 (相对于工作时间段)
-function getTimeBlockStyle(block: TimeBlock) {
+function getTimeBlockStyle(block: TimeBlock, column: number, totalColumns: number) {
   const start = timeToMinutes(block.startTime)
   const end = timeToMinutes(block.endTime)
   const duration = end - start
@@ -67,9 +73,15 @@ function getTimeBlockStyle(block: TimeBlock) {
   const top = ((start - startMinutes) / workMinutes) * 100
   const height = (duration / workMinutes) * 100
 
+  // 计算水平位置 (处理重叠)
+  const widthPercent = 100 / totalColumns
+  const leftPercent = column * widthPercent
+
   return {
     top: `${top}%`,
-    height: `${height}%`
+    height: `${height}%`,
+    left: `${leftPercent}%`,
+    width: `${widthPercent}%`
   }
 }
 
@@ -133,41 +145,41 @@ function handleEdit(block: TimeBlock) {
       <div class="absolute inset-0 left-16 right-4">
         <!-- 时间段卡片 -->
         <div
-          v-for="block in scheduleStore.currentDayTimeBlocks"
-          :key="block.id + block.date"
-          class="absolute left-0 right-0 px-2 group"
-          :style="getTimeBlockStyle(block)"
+          v-for="layout in timeBlockLayouts"
+          :key="layout.block.id + layout.block.date"
+          class="absolute px-2 group"
+          :style="getTimeBlockStyle(layout.block, layout.column, layout.totalColumns)"
         >
           <div
             :class="[
               'h-full rounded-lg border-l-4 p-3 shadow-sm hover:shadow-md transition-all',
-              ACTIVITY_TYPE_META[block.activityType].bgColor,
-              ACTIVITY_TYPE_META[block.activityType].borderColor
+              ACTIVITY_TYPE_META[layout.block.activityType].bgColor,
+              ACTIVITY_TYPE_META[layout.block.activityType].borderColor
             ]"
           >
             <!-- 时间和活动类型 -->
             <div class="flex items-center justify-between mb-1">
               <div class="flex items-center space-x-2">
-                <Clock :class="['w-3 h-3', ACTIVITY_TYPE_META[block.activityType].color]" />
-                <span :class="['text-xs font-medium', ACTIVITY_TYPE_META[block.activityType].color]">
-                  {{ block.startTime }} - {{ block.endTime }}
+                <Clock :class="['w-3 h-3', ACTIVITY_TYPE_META[layout.block.activityType].color]" />
+                <span :class="['text-xs font-medium', ACTIVITY_TYPE_META[layout.block.activityType].color]">
+                  {{ layout.block.startTime }} - {{ layout.block.endTime }}
                 </span>
-                <span :class="['text-xs', ACTIVITY_TYPE_META[block.activityType].color]">
-                  {{ ACTIVITY_TYPE_META[block.activityType].label }}
+                <span :class="['text-xs', ACTIVITY_TYPE_META[layout.block.activityType].color]">
+                  {{ ACTIVITY_TYPE_META[layout.block.activityType].label }}
                 </span>
               </div>
 
               <!-- 操作按钮 (hover 显示) -->
               <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
-                  @click="handleEdit(block)"
+                  @click="handleEdit(layout.block)"
                   class="p-1 rounded hover:bg-white/50 dark:hover:bg-gray-700/50 transition-colors"
                   aria-label="编辑"
                 >
                   <Edit class="w-3 h-3 text-gray-600 dark:text-gray-400" />
                 </button>
                 <button
-                  @click="handleDelete(block)"
+                  @click="handleDelete(layout.block)"
                   class="p-1 rounded hover:bg-white/50 dark:hover:bg-gray-700/50 transition-colors"
                   aria-label="删除"
                 >
@@ -177,14 +189,14 @@ function handleEdit(block: TimeBlock) {
             </div>
 
             <!-- 描述 -->
-            <p :class="['text-sm font-medium line-clamp-2', ACTIVITY_TYPE_META[block.activityType].color]">
-              {{ block.description }}
+            <p :class="['text-sm font-medium line-clamp-2', ACTIVITY_TYPE_META[layout.block.activityType].color]">
+              {{ layout.block.description }}
             </p>
 
             <!-- 重复标识 -->
-            <div v-if="block.recurrence !== 'none'" class="mt-1">
+            <div v-if="layout.block.recurrence !== 'none'" class="mt-1">
               <span class="text-xs text-gray-500 dark:text-gray-400">
-                🔄 {{ block.sourceBlockId ? '重复' : '重复(原始)' }}
+                🔄 {{ layout.block.sourceBlockId ? '重复' : '重复(原始)' }}
               </span>
             </div>
           </div>
@@ -193,7 +205,7 @@ function handleEdit(block: TimeBlock) {
 
       <!-- 空状态 -->
       <div
-        v-if="scheduleStore.currentDayTimeBlocks.length === 0"
+        v-if="timeBlockLayouts.length === 0"
         class="absolute inset-0 flex items-center justify-center"
       >
         <div class="text-center text-gray-400 dark:text-gray-500">

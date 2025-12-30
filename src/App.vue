@@ -4,12 +4,16 @@ import { useScheduleStore } from '@/stores/scheduleStore'
 import { useTheme } from '@/composables/useTheme'
 import DateNavigator from '@/components/DateNavigator.vue'
 import TimelineView from '@/components/TimelineView.vue'
+import WeekView from '@/components/WeekView.vue'
 import TimeBlockForm from '@/components/TimeBlockForm.vue'
 import type { TimeBlock, TimeBlockFormData } from '@/types/schedule'
 import { Plus, Download, Upload, Moon, Sun, Trash2 } from 'lucide-vue-next'
 
 const scheduleStore = useScheduleStore()
 const { theme, toggleTheme: toggleThemeComposable } = useTheme()
+
+// 视图模式
+const viewMode = ref<'day' | 'week'>('day')
 
 // 表单状态
 const isFormOpen = ref(false)
@@ -117,6 +121,12 @@ function handleFileChange(event: Event) {
 function handleClearData() {
   scheduleStore.clearAllData()
 }
+
+// 处理周视图日期选择
+function handleWeekViewSelectDate(date: string) {
+  scheduleStore.goToDate(date)
+  viewMode.value = 'day'
+}
 </script>
 
 <template>
@@ -199,11 +209,37 @@ function handleClearData() {
 
     <!-- 主内容区 -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- 日期导航 -->
-      <DateNavigator />
+      <!-- 视图切换标签 -->
+      <div class="flex space-x-2 mb-6 border-b border-gray-200 dark:border-gray-700">
+        <button
+          @click="viewMode = 'day'"
+          class="px-4 py-2 font-medium transition-colors"
+          :class="
+            viewMode === 'day'
+              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+          "
+        >
+          日视图
+        </button>
+        <button
+          @click="viewMode = 'week'"
+          class="px-4 py-2 font-medium transition-colors"
+          :class="
+            viewMode === 'week'
+              ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+          "
+        >
+          周视图
+        </button>
+      </div>
 
-      <!-- 统计信息 -->
-      <div class="grid grid-cols-3 gap-4 mb-6">
+      <!-- 日期导航 (仅日视图显示) -->
+      <DateNavigator v-if="viewMode === 'day'" />
+
+      <!-- 统计信息 (仅日视图显示) -->
+      <div v-if="viewMode === 'day'" class="grid grid-cols-3 gap-4 mb-6">
         <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
           <p class="text-sm text-blue-600 dark:text-blue-400">工作</p>
           <p class="text-2xl font-bold text-blue-700 dark:text-blue-300">
@@ -224,8 +260,9 @@ function handleClearData() {
         </div>
       </div>
 
-      <!-- 时间轴视图 -->
-      <TimelineView @edit="openEditForm" />
+      <!-- 条件渲染视图 -->
+      <TimelineView v-if="viewMode === 'day'" @edit="openEditForm" />
+      <WeekView v-else @select-date="handleWeekViewSelectDate" />
     </main>
 
     <!-- 表单弹窗 -->

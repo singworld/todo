@@ -229,3 +229,199 @@ export function cleanupOldTimeBlocks(timeBlocks: TimeBlock[]): TimeBlock[] {
     return compareDates(block.date, sevenDaysAgo) >= 0
   })
 }
+
+/**
+ * 获取指定日期所在周的周一
+ * @param date 任意日期
+ * @returns 该周的周一（Date 对象）
+ */
+export function getWeekStartMonday(date: Date): Date {
+  const result = new Date(date)
+  const day = result.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  result.setDate(result.getDate() + diff)
+  return result
+}
+
+/**
+ * 获取指定日期所在周的所有日期（周一到周日）
+ * @param date 任意日期
+ * @returns 包含7天的 Date 数组（周一到周日）
+ */
+export function getWeekDates(date: Date): Date[] {
+  const monday = getWeekStartMonday(date)
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(monday)
+    day.setDate(monday.getDate() + i)
+    return day
+  })
+}
+
+/**
+ * 时间转分钟数 (HH:MM -> 分钟)
+ * 包含防御性检查,非法输入返回 0
+ */
+export function timeToMinutes(time: string): number {
+  const parts = time.split(':')
+  if (parts.length !== 2) return 0
+
+  const hours = parseInt(parts[0], 10)
+  const minutes = parseInt(parts[1], 10)
+
+  if (isNaN(hours) || isNaN(minutes)) return 0
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return 0
+
+  return hours * 60 + minutes
+}
+
+/**
+ * 分钟数转时间字符串
+ */
+export function minutesToTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
+/**
+ * 检测两个时间段是否重叠
+ */
+export function isOverlapping(
+  start1: string,
+  end1: string,
+  start2: string,
+  end2: string
+): boolean {
+  const s1 = timeToMinutes(start1)
+  const e1 = timeToMinutes(end1)
+  const s2 = timeToMinutes(start2)
+  const e2 = timeToMinutes(end2)
+  return s1 < e2 && s2 < e1
+}
+
+/**
+ * 计算时间段的布局信息 (处理重叠显示)
+ *
+ * 算法思路:
+ * 1. 按开始时间排序所有时间段
+ * 2. 使用贪心策略为每个时间段分配列位置
+ * 3. 对于每个时间段,找出所有与其重叠的已布局时间段
+ * 4. 分配第一个未被占用的列号
+ * 5. 动态更新重叠组的总列数,确保所有重叠时间段共享相同的列数
+ *
+ * 时间复杂度: O(n^2) - 每个时间段需要检查已处理的时间段
+ * 空间复杂度: O(n) - 存储所有布局信息
+ *
+ * 边界情况:
+ * - 空数组: 返回空数组
+ * - 无重叠: 所有时间段 column=0, totalColumns=1
+ * - 完全重叠: 多个时间段并排显示,totalColumns = 重叠数量
+ */
+export interface TimeBlockLayout {
+  block: TimeBlock
+  column: number
+  totalColumns: number
+}
+
+export function calculateTimeBlockLayouts(blocks: TimeBlock[]): TimeBlockLayout[] {
+  if (blocks.length === 0) return []
+
+  // 按开始时间排序
+  const sorted = [...blocks].sort((a, b) =>
+    timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
+  )
+
+  // 存储每个时间段的布局信息
+  const layouts: TimeBlockLayout[] = []
+
+  // 贪心算法: 为每个时间段分配列
+  for (const block of sorted) {
+    // 找到所有与当前块重叠的块
+    const overlapping = layouts.filter(layout =>
+      isOverlapping(
+        block.startTime,
+        block.endTime,
+        layout.block.startTime,
+        layout.block.endTime
+      )
+    )
+
+    if (overlapping.length === 0) {
+      // 无重叠, 放在第0列
+      layouts.push({ block, column: 0, totalColumns: 1 })
+    } else {
+      // 有重叠, 找到第一个可用的列
+      const usedColumns = new Set(overlapping.map(o => o.column))
+      let column = 0
+      while (usedColumns.has(column)) {
+        column++
+      }
+
+      // 更新总列数
+      const maxColumns = Math.max(column + 1, ...overlapping.map(o => o.totalColumns))
+      overlapping.forEach(o => { o.totalColumns = maxColumns })
+
+      layouts.push({ block, column, totalColumns: maxColumns })
+    }
+  }
+
+  return layouts
+}
+
+/**
+ * 查找当天第一个空闲时段
+ * @param blocks 当天的所有时间段
+ * @param workStart 工作开始时间 (分钟)
+ * @param workEnd 工作结束时间 (分钟)
+ * @param duration 期望的时段长度 (分钟), 默认60分钟
+ * @returns { startTime, endTime } 或 null
+ */
+export function findFirstFreeSlot(
+  blocks: TimeBlock[],
+  workStart: number = 10 * 60,  // 10:00
+  workEnd: number = 18 * 60,    // 18:00
+  duration: number = 60
+): { startTime: string; endTime: string } | null {
+  if (blocks.length === 0) {
+    // 没有任何时间段, 返回工作开始时间
+    return {
+      startTime: minutesToTime(workStart),
+      endTime: minutesToTime(workStart + duration)
+    }
+  }
+
+  // 按开始时间排序
+  const sorted = [...blocks].sort((a, b) =>
+    timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
+  )
+
+  // 尝试从工作开始时间开始找空闲
+  let currentTime = workStart
+
+  for (const block of sorted) {
+    const blockStart = timeToMinutes(block.startTime)
+    const blockEnd = timeToMinutes(block.endTime)
+
+    // 如果当前位置到下一个块之间有足够空间
+    if (currentTime + duration <= blockStart) {
+      return {
+        startTime: minutesToTime(currentTime),
+        endTime: minutesToTime(currentTime + duration)
+      }
+    }
+
+    // 移动到当前块结束后
+    currentTime = Math.max(currentTime, blockEnd)
+  }
+
+  // 检查最后一个块之后是否有空间
+  if (currentTime + duration <= workEnd) {
+    return {
+      startTime: minutesToTime(currentTime),
+      endTime: minutesToTime(currentTime + duration)
+    }
+  }
+
+  // 没有找到合适的空闲时段
+  return null
+}

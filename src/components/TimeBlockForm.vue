@@ -6,6 +6,8 @@ import VueDatePicker from '@vuepic/vue-datepicker'
 import '@vuepic/vue-datepicker/dist/main.css'
 import { X } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
+import { useScheduleStore } from '@/stores/scheduleStore'
+import { findFirstFreeSlot, timeToMinutes } from '@/utils/schedule'
 
 const props = defineProps<{
   isOpen: boolean
@@ -19,6 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const { theme } = useTheme()
+const scheduleStore = useScheduleStore()
 
 // 表单数据
 const formData = ref<TimeBlockFormData>({
@@ -52,13 +55,33 @@ watch(() => props.editingBlock, (block) => {
 
 // 重置表单
 function resetForm() {
-  formData.value = {
-    startTime: '10:00',  // 默认工作开始时间
-    endTime: '11:00',    // 默认1小时时间段
-    activityType: 'work',
-    description: '',
-    recurrence: 'none',
-    recurrenceEndDate: null
+  // 查找当天第一个空闲时段
+  const freeSlot = findFirstFreeSlot(
+    scheduleStore.currentDayTimeBlocks,
+    10 * 60,  // 10:00
+    18 * 60,  // 18:00
+    60        // 1小时
+  )
+
+  if (freeSlot) {
+    formData.value = {
+      startTime: freeSlot.startTime,
+      endTime: freeSlot.endTime,
+      activityType: 'work',
+      description: '',
+      recurrence: 'none',
+      recurrenceEndDate: null
+    }
+  } else {
+    // 如果没有空闲时段,使用默认值
+    formData.value = {
+      startTime: '10:00',
+      endTime: '11:00',
+      activityType: 'work',
+      description: '',
+      recurrence: 'none',
+      recurrenceEndDate: null
+    }
   }
 }
 
@@ -86,6 +109,20 @@ function validateForm(): boolean {
     return false
   }
 
+  // 验证时间在工作时间范围内 (10:00-18:00)
+  const workStart = 10 * 60  // 10:00
+  const workEnd = 18 * 60    // 18:00
+
+  if (startMinutes < workStart || startMinutes >= workEnd) {
+    errors.value.startTime = '开始时间必须在 10:00-18:00 之间'
+    return false
+  }
+
+  if (endMinutes <= workStart || endMinutes > workEnd) {
+    errors.value.endTime = '结束时间必须在 10:00-18:00 之间'
+    return false
+  }
+
   // 验证重复结束日期
   if (formData.value.recurrence !== 'none' && formData.value.recurrenceEndDate) {
     const today = new Date()
@@ -98,12 +135,6 @@ function validateForm(): boolean {
   }
 
   return true
-}
-
-// 时间转分钟
-function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number)
-  return hours * 60 + minutes
 }
 
 // 提交表单
@@ -165,8 +196,14 @@ function handleContentClick(e: MouseEvent) {
                 <input
                   v-model="formData.startTime"
                   type="time"
+                  min="10:00"
+                  max="18:00"
                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                  :class="{ 'border-red-500': errors.startTime }"
                 />
+                <p v-if="errors.startTime" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                  {{ errors.startTime }}
+                </p>
               </div>
 
               <!-- 结束时间 -->
@@ -177,6 +214,8 @@ function handleContentClick(e: MouseEvent) {
                 <input
                   v-model="formData.endTime"
                   type="time"
+                  min="10:00"
+                  max="18:00"
                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
                   :class="{ 'border-red-500': errors.endTime }"
                 />
